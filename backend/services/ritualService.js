@@ -62,7 +62,31 @@ const updateActivity = async (ritualId, activityId, actualValue) => {
 
   return await ritual.save();
 };
+const deleteActivity = async (ritualId, activityId, userId) => {
+  const ritual = await MorningRitual.findOne({
+    _id: ritualId,
+    userId,
+  });
 
+  if (!ritual) {
+    throw new Error("Ritual not found");
+  }
+
+  // 🔥 REMOVE ACTIVITY
+  ritual.activities = ritual.activities.filter(
+    (a) => a._id.toString() !== activityId,
+  );
+
+  // 🔥 RECALCULATE SCORE
+  ritual.totalScore = ritual.activities.reduce(
+    (sum, act) => sum + act.score,
+    0,
+  );
+
+  await ritual.save();
+
+  return ritual;
+};
 const addActivity = async (ritualId, activityData, userId) => {
   const ritual = await MorningRitual.findOne({
     _id: ritualId,
@@ -91,4 +115,5 @@ module.exports = {
   getRitualByDate,
   updateActivity,
   addActivity,
+  deleteActivity,
 };

@@ -7,6 +7,7 @@ const {
   createRitual,
   getRitual,
   updateActivity,
+  deleteActivity,
 } = require("../controllers/ritualController");
 
 /**
@@ -42,6 +43,38 @@ router.get("/:date", auth, getRitual);
  *     tags: [Ritual]
  */
 router.put("/:id/activity/:activityId", auth, updateActivity);
+
+/**
+ * @swagger
+ * /api/ritual/{id}/activity/{activityId}:
+ *   delete:
+ *     summary: Delete ritual activity
+ *     tags: [Ritual]
+ */
+
+router.delete(
+  "/:id/activity/:activityId",
+  auth,
+  deleteActivity
+);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /**
  * @swagger

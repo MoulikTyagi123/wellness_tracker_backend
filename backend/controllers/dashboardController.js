@@ -51,10 +51,11 @@ const getMyAnalytics = async (req, res) => {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
 
-    const startDate = new Date();
+    const startDate = new Date(today);
+
     if (range === "7") startDate.setDate(today.getDate() - 6);
     else if (range === "15") startDate.setDate(today.getDate() - 14);
-    else startDate.setDate(today.getDate() - 30);
+    else startDate.setDate(today.getDate() - 29);
 
     startDate.setHours(0, 0, 0, 0);
 
@@ -85,29 +86,26 @@ const getMyAnalytics = async (req, res) => {
       const date = formatDate(e.date);
       if (!result[date]) result[date] = { date };
 
-      result[date].calories = e.actualCalories || 0;
+      result[date].calories = e.actualCalories || null;
     });
 
     mental.forEach((e) => {
       const date = formatDate(e.date);
       if (!result[date]) result[date] = { date };
 
-      result[date].mood = e.mood || 0;
+      result[date].mood = e.mood || null;
     });
 
-    let finalData = Object.values(result).sort(
-      (a, b) => new Date(a.date) - new Date(b.date),
-    );
+    const days = parseInt(range);
 
     const filled = [];
-    const totalDays = Math.ceil((today - startDate) / (1000 * 60 * 60 * 24));
 
-    for (let i = 0; i <= totalDays; i++) {
+    for (let i = 0; i < days; i++) {
       const d = new Date(startDate);
       d.setDate(startDate.getDate() + i);
 
       const formatted = formatDate(d);
-      const existing = finalData.find((x) => x.date === formatted);
+      const existing = result[formatted];
 
       filled.push(
         existing || {
@@ -115,13 +113,11 @@ const getMyAnalytics = async (req, res) => {
           sleep: null,
           calories: null,
           mood: null,
-        },
+        }
       );
     }
 
-    const clean = filled.filter(
-      (d) => d[type] !== null && d[type] !== undefined,
-    );
+    const clean = filled.filter((d) => d[type] !== null);
 
     const insights = generateInsights(clean, type);
 
@@ -130,7 +126,6 @@ const getMyAnalytics = async (req, res) => {
       insights,
     });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: err.message });
   }
 };

@@ -7,69 +7,47 @@ function Ritual() {
   const [newActivity, setNewActivity] = useState({
     name: "",
     type: "yesno",
+    goalValue: "",
   });
 
-  // ================= FETCH TODAY =================
+  // FETCH TODAY
   useEffect(() => {
-    const fetchData = async () => {
-      const token = localStorage.getItem("token");
-      const today = new Date().toISOString();
-
+    const fetchToday = async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/ritual/${today}`, {
-          headers: { Authorization: token },
-        });
+        const token = localStorage.getItem("token");
+        const today = new Date().toISOString();
+
+        const res = await fetch(
+          `http://localhost:5000/api/ritual/${today}`,
+          {
+            headers: { Authorization: token },
+          }
+        );
 
         const data = await res.json();
 
-        if (data && data.activities) {
-          setActivities(data.activities);
-          setRitualId(data._id);
-        } else {
-          setActivities([]);
-          setRitualId(null);
+        if (data) {
+          setActivities(data.activities || []);
+          setRitualId(data._id || null);
         }
       } catch (err) {
         console.error(err);
       }
     };
 
-    fetchData();
+    fetchToday();
   }, []);
 
-  // ================= ADD ACTIVITY =================
+  // ADD ACTIVITY
   const addActivity = async () => {
-    if (!newActivity.name) return alert("Enter name");
+    if (!newActivity.name) return;
 
     const token = localStorage.getItem("token");
-
-    const activity = {
-      name: newActivity.name,
-      type: newActivity.type,
-      actualValue: newActivity.type === "yesno" ? false : "",
-      completed: false,
-    };
+    let id = ritualId;
 
     try {
-      if (ritualId) {
-        // ✅ ADD TO EXISTING
-        const res = await fetch(
-          `http://localhost:5000/api/ritual/${ritualId}/activity`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: token,
-            },
-            body: JSON.stringify(activity),
-          }
-        );
-
-        const data = await res.json();
-        setActivities(data.activities);
-      } else {
-        // ✅ CREATE NEW
-        const res = await fetch(`http://localhost:5000/api/ritual`, {
+      if (!id) {
+        const createRes = await fetch(`http://localhost:5000/api/ritual`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -77,30 +55,78 @@ function Ritual() {
           },
           body: JSON.stringify({
             date: new Date(),
-            activities: [activity],
+            activities: [],
           }),
         });
 
-        const data = await res.json();
-        setActivities(data.activities);
-        setRitualId(data._id);
+        const created = await createRes.json();
+        id = created._id;
+        setRitualId(id);
       }
 
-      setNewActivity({ name: "", type: "yesno" });
+      let goal = newActivity.goalValue;
+
+      if (newActivity.type === "numeric") {
+        goal = goal === "" ? null : Number(goal);
+      }
+
+      if (newActivity.type === "time") {
+        goal = goal || null;
+      }
+
+      if (newActivity.type === "yesno") {
+        goal = goal === "" ? null : goal; // true / false
+      }
+
+      const payload = {
+        name: newActivity.name,
+        type: newActivity.type,
+        goalValue: goal,
+        actualValue:
+          newActivity.type === "yesno" ? false : null,
+      };
+
+      const res = await fetch(
+        `http://localhost:5000/api/ritual/${id}/activity`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: token,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const data = await res.json();
+      setActivities(data.activities);
+
+      setNewActivity({ name: "", type: "yesno", goalValue: "" });
     } catch (err) {
       console.error(err);
-      alert("Error adding activity");
     }
   };
 
-  // ================= HANDLE CHANGE =================
+  // UPDATE VALUE
   const handleChange = async (index, value) => {
     const updated = [...activities];
-    updated[index].actualValue = value;
-    updated[index].completed =
-      updated[index].type === "yesno"
-        ? value
-        : value !== "" && value !== null;
+    const activity = updated[index];
+
+    let finalValue = value;
+
+    if (activity.type === "numeric") {
+      finalValue = value === "" ? null : Number(value);
+    }
+
+    if (activity.type === "time") {
+      finalValue = value || null;
+    }
+
+    if (activity.type === "yesno") {
+      finalValue = Boolean(value);
+    }
+
+    activity.actualValue = finalValue;
 
     setActivities(updated);
 
@@ -108,16 +134,14 @@ function Ritual() {
       const token = localStorage.getItem("token");
 
       await fetch(
-        `http://localhost:5000/api/ritual/${ritualId}/activity/${updated[index]._id}`,
+        `http://localhost:5000/api/ritual/${ritualId}/activity/${activity._id}`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             Authorization: token,
           },
-          body: JSON.stringify({
-            actualValue: value,
-          }),
+          body: JSON.stringify({ actualValue: finalValue }),
         }
       );
     } catch (err) {
@@ -125,19 +149,41 @@ function Ritual() {
     }
   };
 
-  // ================= SUBMIT DAY =================
-  const submitDay = async () => {
-    if (!ritualId) return alert("Nothing to submit");
+  // DELETE ACTIVITY ✅ FIXED
+  const deleteActivity = async (activityId) => {
+    try {
+      const token = localStorage.getItem("token");
 
-    alert("Day submitted ✅ (Data already saved live)");
+      const res = await fetch(
+        `http://localhost:5000/api/ritual/${ritualId}/activity/${activityId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: token,
+          },
+        }
+      );
+
+      const data = await res.json();
+      setActivities(data.activities);
+
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
+  };
+
+  // SUBMIT
+  const submitDay = () => {
+    alert("✅ All activities saved successfully!");
   };
 
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold mb-6">Ritual Tracker 🔥</h2>
 
-      {/* ADD ACTIVITY */}
+      {/* ADD */}
       <div className="mb-6 p-4 border rounded bg-white shadow">
+
         <input
           placeholder="Activity Name"
           value={newActivity.name}
@@ -159,6 +205,55 @@ function Ritual() {
           <option value="time">Time</option>
         </select>
 
+        {/* NUMERIC TARGET */}
+        {newActivity.type === "numeric" && (
+          <input
+            type="number"
+            placeholder="Target Value"
+            value={newActivity.goalValue}
+            onChange={(e) =>
+              setNewActivity({
+                ...newActivity,
+                goalValue: e.target.value,
+              })
+            }
+            className="p-2 border w-full mb-2"
+          />
+        )}
+
+        {/* TIME TARGET */}
+        {newActivity.type === "time" && (
+          <input
+            type="time"
+            value={newActivity.goalValue}
+            onChange={(e) =>
+              setNewActivity({
+                ...newActivity,
+                goalValue: e.target.value,
+              })
+            }
+            className="p-2 border w-full mb-2"
+          />
+        )}
+
+        {/* YES/NO TARGET ✅ */}
+        {newActivity.type === "yesno" && (
+          <select
+            value={newActivity.goalValue}
+            onChange={(e) =>
+              setNewActivity({
+                ...newActivity,
+                goalValue: e.target.value === "true",
+              })
+            }
+            className="p-2 border w-full mb-2"
+          >
+            <option value="">Select Target</option>
+            <option value="true">Yes (Must Do)</option>
+            <option value="false">No (Must Avoid)</option>
+          </select>
+        )}
+
         <button
           onClick={addActivity}
           className="bg-blue-600 text-white px-4 py-2 rounded"
@@ -169,44 +264,66 @@ function Ritual() {
 
       {/* TRACK */}
       {activities.map((a, i) => (
-        <div key={i} className="mb-4 p-4 border rounded bg-white">
-          <p>{a.name}</p>
+        <div key={a._id} className="mb-4 p-4 border rounded bg-white">
 
+          <p className="font-semibold">{a.name}</p>
+
+          {/* SHOW TARGET */}
+          <p className="text-sm text-gray-600">
+            Target:{" "}
+            {a.type === "yesno"
+              ? a.goalValue === true
+                ? "Yes"
+                : "No"
+              : a.goalValue || "-"}
+          </p>
+
+          {/* YES/NO */}
           {a.type === "yesno" && (
             <input
               type="checkbox"
-              checked={a.actualValue || false}
+              checked={!!a.actualValue}
               onChange={(e) => handleChange(i, e.target.checked)}
             />
           )}
 
+          {/* NUMERIC */}
           {a.type === "numeric" && (
             <input
               type="number"
-              value={a.actualValue || ""}
-              onChange={(e) =>
-                handleChange(i, e.target.value)
-              }
+              value={a.actualValue ?? ""}
+              onChange={(e) => handleChange(i, e.target.value)}
+              className="border p-2 mt-2"
             />
           )}
 
+          {/* TIME */}
           {a.type === "time" && (
             <input
               type="time"
-              value={a.actualValue || ""}
-              onChange={(e) =>
-                handleChange(i, e.target.value)
-              }
+              value={a.actualValue ?? ""}
+              onChange={(e) => handleChange(i, e.target.value)}
+              className="border p-2 mt-2"
             />
           )}
 
-          <p>
-            {a.completed ? "✅ Completed" : "❌ Not Completed"}
+          <p className="text-sm mt-1">
+            {a.actualValue !== null && a.actualValue !== ""
+              ? "✅ Completed"
+              : "❌ Not Completed"}
           </p>
+
+          {/* DELETE */}
+          <button
+            onClick={() => deleteActivity(a._id)}
+            className="mt-2 bg-red-500 text-white px-3 py-1 rounded"
+          >
+            Delete
+          </button>
         </div>
       ))}
 
-      {/* ✅ SUBMIT BUTTON */}
+      {/* SUBMIT */}
       {activities.length > 0 && (
         <button
           onClick={submitDay}

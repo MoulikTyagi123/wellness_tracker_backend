@@ -25,6 +25,30 @@ const getRitual = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+const deleteActivity = async (req, res) => {
+  try {
+    const { id: userId } = req.user;
+
+    const ritual = await ritualService.deleteActivity(
+      req.params.id,
+      req.params.activityId,
+      userId
+    );
+
+    res.json(ritual);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+
+
+
+
+
+
+
+
 
 const updateActivity = async (req, res) => {
   try {
@@ -47,4 +71,5 @@ module.exports = {
   createRitual,
   getRitual,
   updateActivity,
+  deleteActivity
 };
