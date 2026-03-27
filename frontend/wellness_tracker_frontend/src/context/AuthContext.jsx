@@ -1,39 +1,35 @@
-import { useContext } from "react";
-import { AuthContext } from "../../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { createContext, useState } from 'react';
 
-function Navbar() {
-  const { user, logout } = useContext(AuthContext);
-  const navigate = useNavigate();
+const AuthContext = createContext();
 
-  const handleLogout = () => {
-    logout();              // clear storage + context
-    navigate("/");         // go to landing page
+function AuthProvider({ children }) {
+
+  const [user, setUser] = useState(() => {
+    const storedUser = localStorage.getItem("user");
+    return storedUser ? JSON.parse(storedUser) : null;
+  });
+
+  const login = (data) => {
+    localStorage.setItem("token", data.token);
+
+    // ✅ THIS LINE IS MISSING IN YOUR CODE
+    localStorage.setItem("user", JSON.stringify(data.user));
+
+    setUser(data.user);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user"); // ✅ important
+    setUser(null);
   };
 
   return (
-    <div className="h-16 bg-white shadow flex items-center justify-between px-6">
-      
-      <h1 className="text-xl font-semibold">Dashboard</h1>
-
-      <div className="flex items-center gap-4">
-        
-        {/* 👤 USER NAME */}
-        <span className="text-gray-600">
-          {user?.name || "User"}
-        </span>
-
-        {/* 🚪 LOGOUT BUTTON */}
-        <button
-          onClick={handleLogout}
-          className="px-4 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition"
-        >
-          Logout
-        </button>
-
-      </div>
-    </div>
+    <AuthContext.Provider value={{ user, login, logout }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 
-export default Navbar;
+export { AuthContext };
+export default AuthProvider;
