@@ -18,46 +18,54 @@ const UserDetails = () => {
   const [user, setUser] = useState(null);
   const [analytics, setAnalytics] = useState([]);
   const [insights, setInsights] = useState([]);
-  const [range, setRange] = useState(7); // ✅ RANGE CONTROL
+  const [range, setRange] = useState(7);
 
-  // ✅ FALLBACK
-  const generateFallback = () => ({
-    sleep: Math.floor(60 + Math.random() * 40),
-    calories: Math.floor(1800 + Math.random() * 600),
-    mood: Math.floor(2 + Math.random() * 3),
-  });
-
-  // ✅ INSIGHTS
-  const generateInsights = (data, type) => {
-    const values = data.map((d) => d[type]).filter((v) => typeof v === "number");
-
-    if (values.length < 3) return ["Not enough data"];
-
-    const first = values[0];
-    const last = values[values.length - 1];
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
-
+  // ✅ MULTI INSIGHTS (sleep + calories + mood)
+  const generateInsights = (data) => {
     const result = [];
 
-    if (last > first) result.push(`${type} improving 📈`);
-    else if (last < first) result.push(`${type} declining 📉`);
-    else result.push(`${type} stable`);
+    const getStats = (key) => {
+      const values = data
+        .map((d) => d[key])
+        .filter((v) => typeof v === "number");
 
-    if (type === "sleep") {
-      result.push(avg >= 70 ? "Overall good sleep 😴" : "Overall low sleep ⚠️");
+      if (values.length < 3) return null;
+
+      const first = values[0];
+      const last = values[values.length - 1];
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+
+      let trend = "stable";
+      if (last > first) trend = "improving";
+      else if (last < first) trend = "declining";
+
+      return { avg, trend };
+    };
+
+    const sleep = getStats("sleep");
+    const calories = getStats("calories");
+    const mood = getStats("mood");
+
+    if (sleep) {
+      result.push(`Sleep is ${sleep.trend}`);
+      result.push(sleep.avg >= 70 ? "Overall good sleep 😴" : "Sleep needs improvement ⚠️");
     }
 
-    if (type === "calories") {
-      if (avg > 2500) result.push("High calories 🍔");
-      else if (avg < 1800) result.push("Low calories ⚠️");
+    if (calories) {
+      result.push(`Calories are ${calories.trend}`);
+      if (calories.avg > 2500) result.push("High calorie intake 🍔");
+      else if (calories.avg < 1800) result.push("Low calorie intake ⚠️");
       else result.push("Balanced diet ✅");
     }
 
-    if (type === "mood") {
-      if (avg >= 4) result.push("Great mood 😄");
-      else if (avg >= 3) result.push("Stable mood 🙂");
-      else result.push("Low mood ⚠️");
+    if (mood) {
+      result.push(`Mood is ${mood.trend}`);
+      if (mood.avg >= 4) result.push("Great overall mood 😄");
+      else if (mood.avg >= 3) result.push("Stable mood 🙂");
+      else result.push("Mood needs attention ⚠️");
     }
+
+    if (result.length === 0) return ["No sufficient data yet"];
 
     return result;
   };
@@ -79,58 +87,73 @@ const UserDetails = () => {
 
         const rawData = analyticsRes.data.data || [];
 
-        // ✅ CREATE DATE MAP (IMPORTANT FIX)
         const dataMap = {};
         rawData.forEach((item) => {
           const key = new Date(item.date).toDateString();
           dataMap[key] = item;
         });
 
-        // ✅ GENERATE PERFECT TIMELINE
+        // ✅ IMPORTANT FIX
+        const hasRealData = rawData.length > 0;
+
         const processed = [];
 
         for (let i = range - 1; i >= 0; i--) {
           const dateObj = new Date();
           dateObj.setDate(dateObj.getDate() - i);
 
+          const isToday =
+            new Date().toDateString() === dateObj.toDateString();
+
           const key = dateObj.toDateString();
           const existing = dataMap[key];
-          const fallback = generateFallback();
+
+          let sleep = null;
+          let calories = null;
+          let mood = null;
+
+          if (existing) {
+            sleep = existing.sleep ?? null;
+            calories = existing.calories ?? null;
+            mood = existing.mood ?? null;
+          } else if (!isToday && hasRealData) {
+            sleep = null;
+            calories = null;
+            mood = null;
+          }
 
           processed.push({
             date: dateObj.toISOString(),
-            sleep: existing?.sleep ?? fallback.sleep,
-            calories: existing?.calories ?? fallback.calories,
-            mood: existing?.mood ?? fallback.mood,
+            sleep,
+            calories,
+            mood,
           });
         }
 
         setUser(userRes.data);
         setAnalytics(processed);
-        setInsights(generateInsights(processed, "sleep"));
+        setInsights(generateInsights(processed));
 
       } catch (err) {
         console.error(err);
 
-        // FULL FALLBACK
+        // ✅ CLEAN EMPTY FALLBACK
         const fallbackData = [];
 
         for (let i = range - 1; i >= 0; i--) {
           const dateObj = new Date();
           dateObj.setDate(dateObj.getDate() - i);
 
-          const fallback = generateFallback();
-
           fallbackData.push({
             date: dateObj.toISOString(),
-            sleep: fallback.sleep,
-            calories: fallback.calories,
-            mood: fallback.mood,
+            sleep: null,
+            calories: null,
+            mood: null,
           });
         }
 
         setAnalytics(fallbackData);
-        setInsights(generateInsights(fallbackData, "sleep"));
+        setInsights(["No data available"]);
       }
     };
 
@@ -178,7 +201,6 @@ const UserDetails = () => {
         {user.name} Analytics
       </h1>
 
-      {/* ✅ RANGE BUTTONS */}
       <div className="flex gap-3 mb-6">
         {[7, 15, 30].map((r) => (
           <button
@@ -193,7 +215,6 @@ const UserDetails = () => {
         ))}
       </div>
 
-      {/* INSIGHTS */}
       <div className="bg-white p-4 rounded mb-6">
         <h3 className="font-semibold mb-2">Insights</h3>
         {insights.map((i, idx) => (

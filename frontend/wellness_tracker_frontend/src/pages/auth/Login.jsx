@@ -11,18 +11,22 @@ function Login() {
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  const handleLogin = async () => {
-    try {
-      const data = await loginUser({ email, password });
+const handleLogin = async () => {
+  try {
+    const data = await loginUser({ email, password });
 
-      login(data);
+    login(data);
 
-      navigate("/dashboard");
-    // eslint-disable-next-line no-unused-vars
-    } catch (error) {
-      alert("Login failed");
+    if (!data.isVerified) {
+      alert("Logged in successfully. You can verify your email later.");
     }
-  };
+
+    navigate("/dashboard");
+
+  } catch (error) {
+    alert(error.response?.data?.message || "Login failed");
+  }
+};
 
   return (
     <div className="flex items-center justify-center h-screen bg-gray-100">

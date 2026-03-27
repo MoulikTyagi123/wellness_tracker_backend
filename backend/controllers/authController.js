@@ -22,7 +22,8 @@ exports.signup = async (req, res) => {
     await sendVerificationEmail(user.email, emailVerificationToken);
 
     res.status(201).json({
-      message: "User created",
+      message:
+        "Account created successfully. You can login now. (Email verification optional)",
       user,
     });
   } catch (err) {
@@ -65,13 +66,14 @@ exports.login = async (req, res) => {
 
     console.log("Login result:", result);
 
-    if (!result.user.isVerified) {
-      return res.status(400).json({
-        message: "Please verify your email first",
-      });
-    }
-
-    res.json(result);
+    // ✅ ALLOW LOGIN EVEN IF NOT VERIFIED
+    res.json({
+      ...result,
+      isVerified: result.user.isVerified,
+      message: result.user.isVerified
+        ? "Login successful"
+        : "Logged in (email not verified)",
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
