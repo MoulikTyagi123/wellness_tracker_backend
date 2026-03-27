@@ -25,10 +25,11 @@ function Signup() {
 
       navigate("/");
 
-    // eslint-disable-next-line no-unused-vars
+    
     } catch (error) {
-      alert("Signup failed");
-    }
+  console.log(error.response?.data);
+  alert(error.response?.data?.message || "Signup failed");
+}
   };
 
   return (
