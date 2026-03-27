@@ -64,12 +64,9 @@ const getTodayDashboard = async (userId) => {
     date: today,
 
     ritualScore:
-      ritual?.totalScore ??
-      (isDemoUser ? fallback.ritualScore : null),
+      ritual?.totalScore ?? (isDemoUser ? fallback.ritualScore : null),
 
-    sleepHours:
-      sleepHours ??
-      (isDemoUser ? fallback.sleepHours : null),
+    sleepHours: sleepHours ?? (isDemoUser ? fallback.sleepHours : null),
 
     sleepConsistencyScore:
       sleep?.sleepConsistencyScore ??
@@ -80,12 +77,9 @@ const getTodayDashboard = async (userId) => {
       (isDemoUser ? fallback.consumedCalories : null),
 
     calorieTarget:
-      nutrition?.targetCalories ??
-      (isDemoUser ? fallback.calorieTarget : null),
+      nutrition?.targetCalories ?? (isDemoUser ? fallback.calorieTarget : null),
 
-    mood:
-      mental?.mood ??
-      (isDemoUser ? fallback.mood : null),
+    mood: mental?.mood ?? (isDemoUser ? fallback.mood : null),
 
     meditationMinutes:
       mental?.meditationMinutes ??
@@ -95,10 +89,11 @@ const getTodayDashboard = async (userId) => {
 
 module.exports = { getTodayDashboard };
 
-
 // ================= CONTROLLER =================
 
-const { getTodayDashboard: getTodayDashboardService } = require("../services/dashboardService");
+const {
+  getTodayDashboard: getTodayDashboardService,
+} = require("../services/dashboardService");
 const SleepEntryModel = require("../models/SleepEntry");
 const NutritionEntryModel = require("../models/NutritionEntry");
 const MentalWellnessEntryModel = require("../models/mentalWellnessEntry");
