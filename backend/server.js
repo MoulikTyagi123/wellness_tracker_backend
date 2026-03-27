@@ -42,8 +42,6 @@ app.use(
   }),
 );
 
-app.options("*", cors());
-
 // SECURITY
 app.use(helmet());
 
