@@ -12,6 +12,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+const DEMO_IDS = [
+  "69c6233df84856e3a6d12872",
+  "69c62372f84856e3a6d12878",
+];
+
 const UserDetails = () => {
   const { id } = useParams();
 
@@ -20,70 +25,13 @@ const UserDetails = () => {
   const [insights, setInsights] = useState([]);
   const [range, setRange] = useState(7);
 
-  // ✅ DETECT DEMO
-  const isDemoUser = localStorage.getItem("demoUser") === "true";
+  const isDemoUser = DEMO_IDS.includes(id);
 
-  // ✅ RANDOM FALLBACK GENERATOR
   const generateFallback = () => ({
     sleep: Math.floor(60 + Math.random() * 40),
     calories: Math.floor(1800 + Math.random() * 600),
     mood: Math.floor(2 + Math.random() * 3),
   });
-
-  // ✅ MULTI INSIGHTS (sleep + calories + mood)
-  const generateInsights = (data) => {
-    const result = [];
-
-    const getStats = (key) => {
-      const values = data
-        .map((d) => d[key])
-        .filter((v) => typeof v === "number");
-
-      if (values.length < 3) return null;
-
-      const first = values[0];
-      const last = values[values.length - 1];
-      const avg = values.reduce((a, b) => a + b, 0) / values.length;
-
-      let trend = "stable";
-      if (last > first) trend = "improving";
-      else if (last < first) trend = "declining";
-
-      return { avg, trend };
-    };
-
-    const sleep = getStats("sleep");
-    const calories = getStats("calories");
-    const mood = getStats("mood");
-
-    if (sleep) {
-      result.push(`Sleep is ${sleep.trend}`);
-      result.push(
-        sleep.avg >= 70
-          ? "Overall good sleep 😴"
-          : "Sleep needs improvement ⚠️"
-      );
-    }
-
-    if (calories) {
-      result.push(`Calories are ${calories.trend}`);
-      if (calories.avg > 2500) result.push("High calorie intake 🍔");
-      else if (calories.avg < 1800)
-        result.push("Low calorie intake ⚠️");
-      else result.push("Balanced diet ✅");
-    }
-
-    if (mood) {
-      result.push(`Mood is ${mood.trend}`);
-      if (mood.avg >= 4) result.push("Great overall mood 😄");
-      else if (mood.avg >= 3) result.push("Stable mood 🙂");
-      else result.push("Mood needs attention ⚠️");
-    }
-
-    if (result.length === 0) return ["No sufficient data yet"];
-
-    return result;
-  };
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -96,100 +44,56 @@ const UserDetails = () => {
         );
 
         const analyticsRes = await axios.get(
-          `https://wellness-tracker-backend-4if1.onrender.com/api/admin/users/${id}/analytics`,
+          `https://wellness-tracker-backend-4if1.onrender.com/api/admin/users/${id}/analytics?range=${range}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
 
         const rawData = analyticsRes.data.data || [];
 
-        const dataMap = {};
-        rawData.forEach((item) => {
-          const key = new Date(item.date).toDateString();
-          dataMap[key] = item;
+        const processed = rawData.map((item) => {
+          if (isDemoUser) {
+            const f = generateFallback();
+            return {
+              date: item.date,
+              sleep: item.sleep ?? f.sleep,
+              calories: item.calories ?? f.calories,
+              mood: item.mood ?? f.mood,
+            };
+          }
+
+          return {
+            date: item.date,
+            sleep: item.sleep ?? null,
+            calories: item.calories ?? null,
+            mood: item.mood ?? null,
+          };
         });
-
-        const processed = [];
-
-        for (let i = range - 1; i >= 0; i--) {
-          const dateObj = new Date();
-          dateObj.setDate(dateObj.getDate() - i);
-
-          const key = dateObj.toDateString();
-          const existing = dataMap[key];
-
-          let sleep, calories, mood;
-
-// ✅ CHANGE ONLY THIS BLOCK
-
-if (existing) {
-  if (isDemoUser) {
-    const fallback = generateFallback();
-    sleep = existing.sleep ?? fallback.sleep;
-    calories = existing.calories ?? fallback.calories;
-    mood = existing.mood ?? fallback.mood;
-  } else {
-    sleep = existing.sleep ?? null;
-    calories = existing.calories ?? null;
-    mood = existing.mood ?? null;
-  }
-} else {
-  if (isDemoUser) {
-    const fallback = generateFallback();
-    sleep = fallback.sleep;
-    calories = fallback.calories;
-    mood = fallback.mood;
-  } else {
-    sleep = null;
-    calories = null;
-    mood = null;
-  }
-}
-
-          processed.push({
-            date: dateObj.toISOString(),
-            sleep,
-            calories,
-            mood,
-          });
-        }
 
         setUser(userRes.data);
         setAnalytics(processed);
-        setInsights(generateInsights(processed));
+        setInsights(["Data loaded"]);
       } catch (err) {
         console.error(err);
 
-        // ✅ DEMO FALLBACK EVEN ON ERROR
-        const fallbackData = [];
+        if (isDemoUser) {
+          const fallbackData = [];
 
-        for (let i = range - 1; i >= 0; i--) {
-          const dateObj = new Date();
-          dateObj.setDate(dateObj.getDate() - i);
-
-          if (isDemoUser) {
-            const fallback = generateFallback();
+          for (let i = range - 1; i >= 0; i--) {
+            const f = generateFallback();
             fallbackData.push({
-              date: dateObj.toISOString(),
-              sleep: fallback.sleep,
-              calories: fallback.calories,
-              mood: fallback.mood,
-            });
-          } else {
-            fallbackData.push({
-              date: dateObj.toISOString(),
-              sleep: null,
-              calories: null,
-              mood: null,
+              date: new Date(
+                Date.now() - i * 86400000
+              ).toISOString(),
+              ...f,
             });
           }
-        }
 
-        setAnalytics(fallbackData);
-        setInsights(
-          isDemoUser
-            ? generateInsights(fallbackData)
-            : ["No data available"]
-        );
+          setAnalytics(fallbackData);
+          setInsights(["Demo data"]);
+        } else {
+          setAnalytics([]);
+          setInsights(["No data available"]);
+        }
       }
     };
 
@@ -197,39 +101,6 @@ if (existing) {
   }, [id, range]);
 
   if (!user) return <h2>Loading...</h2>;
-
-  const renderChart = (dataKey, title, color) => (
-    <div className="bg-white p-5 rounded-xl shadow-md mb-6">
-      <h2 className="text-lg font-semibold mb-4">{title}</h2>
-
-      <ResponsiveContainer width="100%" height={250}>
-        <LineChart data={analytics}>
-          <CartesianGrid strokeDasharray="3 3" />
-
-          <XAxis
-            dataKey="date"
-            tickFormatter={(value) =>
-              new Date(value).toLocaleDateString("en-IN", {
-                day: "numeric",
-                month: "short",
-              })
-            }
-          />
-
-          <YAxis />
-          <Tooltip />
-
-          <Line
-            type="monotone"
-            dataKey={dataKey}
-            stroke={color}
-            strokeWidth={3}
-            connectNulls
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
 
   return (
     <div className="p-6">
@@ -239,18 +110,13 @@ if (existing) {
 
       <div className="flex gap-3 mb-6">
         {[7, 15, 30].map((r) => (
-          <button
-            key={r}
-            onClick={() => setRange(r)}
-            className={`px-3 py-1 rounded ${
-              range === r ? "bg-black text-white" : "bg-gray-200"
-            }`}
-          >
+          <button key={r} onClick={() => setRange(r)}>
             Last {r} Days
           </button>
         ))}
       </div>
 
+      {/* Insights */}
       <div className="bg-white p-4 rounded mb-6">
         <h3 className="font-semibold mb-2">Insights</h3>
         {insights.map((i, idx) => (
@@ -258,6 +124,7 @@ if (existing) {
         ))}
       </div>
 
+      {/* ✅ CSV RESTORED */}
       <button
         onClick={() =>
           exportToCSV(analytics, `${user.name}_analytics.csv`)
@@ -267,9 +134,18 @@ if (existing) {
         Download CSV
       </button>
 
-      {renderChart("sleep", "Sleep Tracking", "#3b82f6")}
-      {renderChart("calories", "Calories Tracking", "#10b981")}
-      {renderChart("mood", "Mood Tracking", "#f59e0b")}
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={analytics}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="date" />
+          <YAxis />
+          <Tooltip />
+
+          <Line dataKey="sleep" stroke="#3b82f6" />
+          <Line dataKey="calories" stroke="#10b981" />
+          <Line dataKey="mood" stroke="#f59e0b" />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 };
