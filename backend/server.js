@@ -21,21 +21,17 @@ const passport = require("./config/passport");
 
 const app = express();
 
-
-// ✅ ALLOWED ORIGINS (IMPORTANT)
+// CORS
 const allowedOrigins = [
   "http://localhost:5173",
   "https://wellness-tracker-frontend.vercel.app",
   "https://wellness-tracker-backend-uilx.vercel.app",
 ];
 
-// ✅ CORS (FIXED PROPERLY)
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow requests with no origin (like Postman)
       if (!origin) return callback(null, true);
-
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       } else {
@@ -46,40 +42,34 @@ app.use(
   }),
 );
 
-// ✅ HANDLE PREFLIGHT REQUESTS
 app.options("*", cors());
 
-
-// 🔒 SECURITY
+// SECURITY
 app.use(helmet());
 
-// 🚦 RATE LIMITER
+// RATE LIMIT
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  message: "Too many requests from this IP, please try again later",
 });
 app.use(limiter);
 
-// BODY PARSER
+// BODY
 app.use(express.json());
 
 // PASSPORT
 app.use(passport.initialize());
 
-
-// DATABASE
+// DB
 mongoose
   .connect(
-    process.env.MONGO_URI || "mongodb://localhost:27017/wellness-tracker"
+    process.env.MONGO_URI || "mongodb://localhost:27017/wellness-tracker",
   )
-  .then(() => console.log("✅ MongoDB Connected"))
-  .catch((err) => console.error("❌ MongoDB Error:", err));
-
+  .then(() => console.log("MongoDB Connected"))
+  .catch((err) => console.error(err));
 
 // SWAGGER
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
 
 // ROUTES
 app.use("/api/ritual", ritualRoutes);
@@ -90,10 +80,9 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 
-
 // SERVER
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(🚀 Server running on port ${PORT});
+  console.log(`Server running on port ${PORT}`);
 });
