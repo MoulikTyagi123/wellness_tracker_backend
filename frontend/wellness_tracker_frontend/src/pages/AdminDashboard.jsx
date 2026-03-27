@@ -19,45 +19,45 @@ function AdminDashboard() {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [appliedUsers, setAppliedUsers] = useState([]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const token = localStorage.getItem("token");
+useEffect(() => {
+  const fetchData = async () => {
+    try {
+      const token = localStorage.getItem("token");
 
-        const statsRes = await axios.get("/api/admin/stats", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      const statsRes = await axios.get(
+        "https://wellness-tracker-backend-4if1.onrender.com/api/admin/stats",
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-        const analyticsRes = await axios.get("/api/admin/analytics", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      const analyticsRes = await axios.get(
+        "https://wellness-tracker-backend-4if1.onrender.com/api/admin/analytics",
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-   
-        setStats(statsRes.data || {});
-        setData(analyticsRes.data.data || []);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  // 🔥 EXTRACT USERS FROM KEYS
-  const getUsers = () => {
-    const users = new Set();
-
-    data.forEach((item) => {
-      Object.keys(item).forEach((key) => {
-        if (key !== "date") {
-          users.add(key.split("_")[0]);
-        }
-      });
-    });
-
-    return Array.from(users);
+      setStats(statsRes.data || {});
+      setData(analyticsRes.data.data || []);
+    } 
+    catch (err) {
+      console.error(err);
+    }
   };
 
+  fetchData();
+}, []);
+
+const getUsers = () => {
+  const users = new Set();
+
+  data.forEach((item) => {
+    Object.keys(item).forEach((key) => {
+      if (key !== "date" && key.includes("_")) {
+        users.add(key.split("_")[0]);
+      }
+    });
+  });
+
+  return Array.from(users);
+};
   const users = getUsers();
 
   // ✅ CHECKBOX HANDLER

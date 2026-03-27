@@ -24,20 +24,19 @@ function Sleep() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: token,
+          Authorization: `Bearer ${token}`, // ✅ FIX
         },
         body: JSON.stringify(form),
       });
 
       const data = await res.json();
-      if(!res.ok) {
-        throw new Error(data.message || "Failed to save sleep data");
-      }
-      console.log("SLEEP SAVED:", data);
+
+      if (!res.ok) throw new Error(data.message);
+
       alert("Sleep data saved ✅");
 
+    // eslint-disable-next-line no-unused-vars
     } catch (err) {
-      console.error(err);
       alert("Error saving sleep data");
     }
   };
@@ -49,33 +48,25 @@ function Sleep() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        <input
-          type="datetime-local"
-          name="sleepTime"
-          onChange={handleChange}
-          className="p-2 border rounded"
-        />
-        
-        <input
-          type="datetime-local"
-          name="actualSleepTime"
-          onChange={handleChange}
-          className="p-2 border rounded"
-        />
+        <div>
+          <label className="block mb-1">Target Sleep Time</label>
+          <input type="datetime-local" name="sleepTime" onChange={handleChange} className="p-2 border rounded w-full" />
+        </div>
 
-        <input
-          type="datetime-local"
-          name="wakeupTime"
-          onChange={handleChange}
-          className="p-2 border rounded"
-        />
+        <div>
+          <label className="block mb-1">Actual Sleep Time</label>
+          <input type="datetime-local" name="actualSleepTime" onChange={handleChange} className="p-2 border rounded w-full" />
+        </div>
 
-        <input
-          type="datetime-local"
-          name="actualWakeupTime"
-          onChange={handleChange}
-          className="p-2 border rounded"
-        />
+        <div>
+          <label className="block mb-1">Target Wakeup Time</label>
+          <input type="datetime-local" name="wakeupTime" onChange={handleChange} className="p-2 border rounded w-full" />
+        </div>
+
+        <div>
+          <label className="block mb-1">Actual Wakeup Time</label>
+          <input type="datetime-local" name="actualWakeupTime" onChange={handleChange} className="p-2 border rounded w-full" />
+        </div>
 
       </div>
 
