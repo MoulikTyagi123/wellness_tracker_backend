@@ -17,31 +17,30 @@ const DEMO_IDS = [
   "69c62372f84856e3a6d12878",
 ];
 
+const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
+
+const makeDayFallback = () => ({
+  sleep: parseFloat((5 + Math.random() * 4).toFixed(2)),
+  calories: Math.floor(1800 + Math.random() * 700),
+  mood: Math.floor(2 + Math.random() * 4),
+});
+
+const buildDateRange = (numDays) => {
+  const dates = [];
+  for (let i = numDays - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.push(d.toISOString().split("T")[0]);
+  }
+  return dates;
+};
+
 function AdminDashboard() {
   const [data, setData] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [, setUserMap] = useState({}); // id -> name
   const [range, setRange] = useState("7");
-
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [appliedUsers, setAppliedUsers] = useState([]);
-
-  const generateFallback = () => ({
-    sleep: parseFloat((5 + Math.random() * 4).toFixed(2)),
-    calories: Math.floor(1800 + Math.random() * 600),
-    mood: Math.floor(2 + Math.random() * 3),
-  });
-
-  // ✅ Build full date range on frontend for the selected number of days
-  const buildFullDateRange = (numDays) => {
-    const dates = [];
-    for (let i = numDays - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      dates.push(d.toISOString().split("T")[0]);
-    }
-    return dates;
-  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -60,40 +59,33 @@ function AdminDashboard() {
         ]);
 
         const raw = analyticsRes.data.data || [];
-        const serverUserMap = analyticsRes.data.userMap || {};
         const users = usersRes.data.users || [];
-
         setAllUsers(users);
-        setUserMap(serverUserMap);
 
-        // ✅ Build a map of existing data keyed by date
+        // Build date→row map from server
         const rawByDate = {};
-        raw.forEach((row) => {
-          rawByDate[row.date] = row;
-        });
+        raw.forEach((row) => { rawByDate[row.date] = row; });
 
-        // ✅ Build ALL days for the range
-        const allDates = buildFullDateRange(parseInt(range));
+        // ✅ Always build ALL days for the selected range
+        const allDates = buildDateRange(parseInt(range));
 
         const processed = allDates.map((dateStr) => {
-          const row = rawByDate[dateStr] || { date: dateStr };
+          const row = rawByDate[dateStr] || {};
           const newRow = { date: dateStr };
 
           users.forEach((user) => {
-            const userId = user._id;
             const name = user.name;
-            const isDemoUser = DEMO_IDS.includes(userId);
+            const isDemoUser = DEMO_IDS.includes(user._id);
 
             ["sleep", "calories", "mood"].forEach((type) => {
-              // ✅ Backend now uses name_type keys
               const nameKey = `${name}_${type}`;
               const val = row[nameKey];
 
               if (val !== undefined && val !== null) {
                 newRow[nameKey] = val;
               } else if (isDemoUser) {
-                // ✅ Demo users always get fallback for every day
-                newRow[nameKey] = generateFallback()[type];
+                // ✅ Demo: unique random value per day per metric
+                newRow[nameKey] = makeDayFallback()[type];
               } else {
                 newRow[nameKey] = null;
               }
@@ -115,18 +107,18 @@ function AdminDashboard() {
   const handleCheckbox = (userId) => {
     if (selectedUsers.includes(userId)) {
       setSelectedUsers(selectedUsers.filter((u) => u !== userId));
-    } else {
-      if (selectedUsers.length >= 10) {
-        alert("Max 10 users allowed");
-        return;
-      }
-      setSelectedUsers([...selectedUsers, userId]);
+      return;
     }
+    // ✅ FIX: max 5 users only (5 colours available)
+    if (selectedUsers.length >= 5) {
+      alert("Only 5 users can be selected at a time");
+      return;
+    }
+    setSelectedUsers([...selectedUsers, userId]);
   };
 
   const applySelection = () => setAppliedUsers(selectedUsers);
 
-  // ✅ CSV with readable headers: replace userId with userName in column headers
   const downloadCSV = () => {
     if (appliedUsers.length === 0) {
       alert("Select users first");
@@ -138,7 +130,8 @@ function AdminDashboard() {
     );
 
     const filtered = data.map((row) => {
-      const newRow = { Date: row.date };
+      // ✅ FIX: apostrophe prefix so Excel treats date as text, not ##########
+      const newRow = { Date: `'${row.date}` };
       appliedNames.forEach((name) => {
         newRow[`${name} - Sleep (hrs)`] = row[`${name}_sleep`] ?? "";
         newRow[`${name} - Calories`] = row[`${name}_calories`] ?? "";
@@ -150,12 +143,9 @@ function AdminDashboard() {
     exportToCSV(filtered, `admin_${range}days_analytics.csv`);
   };
 
-  const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
-
   const renderChart = (type, title) => (
     <div className="bg-white p-5 rounded-xl shadow-md">
       <h2 className="text-lg font-semibold mb-4">{title}</h2>
-
       {appliedUsers.length === 0 ? (
         <p className="text-gray-400 text-center py-8">
           Select users and click Apply to view chart
@@ -175,7 +165,7 @@ function AdminDashboard() {
                   key={`${userId}_${type}`}
                   dataKey={`${name}_${type}`}
                   name={name}
-                  stroke={colors[index % colors.length]}
+                  stroke={COLORS[index]}
                   connectNulls
                   dot={{ r: 2 }}
                 />
@@ -191,7 +181,7 @@ function AdminDashboard() {
     <div className="p-6 bg-gray-100 min-h-screen">
       <h1 className="text-2xl font-bold mb-6">Admin Dashboard</h1>
 
-      {/* ✅ RANGE SELECTOR */}
+      {/* ✅ Range selector */}
       <div className="flex gap-3 mb-6">
         {["7", "15", "30"].map((r) => (
           <button
@@ -208,7 +198,7 @@ function AdminDashboard() {
         ))}
       </div>
 
-      {/* CSV Button */}
+      {/* CSV button */}
       <button
         onClick={downloadCSV}
         className="mb-6 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
@@ -216,9 +206,12 @@ function AdminDashboard() {
         Download CSV
       </button>
 
-      {/* User Selector */}
+      {/* ✅ User selector — max 5 */}
       <div className="mb-6 bg-white p-4 rounded-xl shadow-md max-w-md">
-        <h3 className="font-semibold mb-3">Select Users (max 10)</h3>
+        <h3 className="font-semibold mb-1">Select Users</h3>
+        <p className="text-xs text-gray-400 mb-3">
+          Max 5 users ({selectedUsers.length}/5 selected)
+        </p>
 
         {allUsers.map((user) => (
           <label
@@ -229,8 +222,19 @@ function AdminDashboard() {
               type="checkbox"
               checked={selectedUsers.includes(user._id)}
               onChange={() => handleCheckbox(user._id)}
+              disabled={
+                !selectedUsers.includes(user._id) && selectedUsers.length >= 5
+              }
             />
-            <span>{user.name}</span>
+            <span
+              className={
+                !selectedUsers.includes(user._id) && selectedUsers.length >= 5
+                  ? "text-gray-400"
+                  : ""
+              }
+            >
+              {user.name}
+            </span>
             {DEMO_IDS.includes(user._id) && (
               <span className="text-xs text-blue-500 bg-blue-50 px-1 rounded">
                 demo

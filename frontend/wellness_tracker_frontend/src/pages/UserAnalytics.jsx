@@ -16,7 +16,7 @@ const DEMO_IDS = [
   "69c62372f84856e3a6d12878",
 ];
 
-// ✅ Client-side insight generator (mirrors backend logic, works on any data size)
+// ✅ Client-side insight generator — works with any number of entries >= 1
 const generateLocalInsights = (data, type) => {
   const values = data
     .map((d) => d[type])
@@ -69,6 +69,24 @@ const generateLocalInsights = (data, type) => {
   return insights;
 };
 
+// ✅ Generate one random value per metric per day — called fresh per day so values vary
+const makeDayFallback = () => ({
+  sleep: parseFloat((5 + Math.random() * 4).toFixed(2)),       // 5.00 – 9.00
+  calories: Math.floor(1800 + Math.random() * 700),             // 1800 – 2500
+  mood: Math.floor(2 + Math.random() * 4),                      // 2 – 5
+});
+
+// ✅ Build full date range array for numDays days ending today
+const buildDateRange = (numDays) => {
+  const dates = [];
+  for (let i = numDays - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.push(d.toISOString().split("T")[0]);
+  }
+  return dates;
+};
+
 function UserAnalytics() {
   const [safeData, setSafeData] = useState([]);
   const [insights, setInsights] = useState([]);
@@ -77,23 +95,6 @@ function UserAnalytics() {
 
   const user = JSON.parse(localStorage.getItem("user"));
   const isDemoUser = DEMO_IDS.includes(user?._id);
-
-  const generateFallback = () => ({
-    sleep: parseFloat((5 + Math.random() * 4).toFixed(2)),
-    calories: Math.floor(1800 + Math.random() * 600),
-    mood: Math.floor(2 + Math.random() * 3),
-  });
-
-  // ✅ Build full date series for given range
-  const buildDateRange = (numDays) => {
-    const dates = [];
-    for (let i = numDays - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      dates.push(d.toISOString().split("T")[0]);
-    }
-    return dates;
-  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -108,23 +109,28 @@ function UserAnalytics() {
         const raw = res.data.data || [];
         const serverInsights = res.data.insights || [];
 
-        // ✅ Build full date map from server response
+        // Build a date→item map from server response
         const byDate = {};
         raw.forEach((item) => { byDate[item.date] = item; });
 
-        // ✅ Fill ALL days in range
+        // ✅ Always build ALL days in range
         const allDates = buildDateRange(parseInt(range));
+
         const processed = allDates.map((dateStr) => {
           const item = byDate[dateStr];
+
           if (isDemoUser) {
-            const f = generateFallback();
+            // ✅ FIX: generate fresh random fallback per day so each day is different
+            const f = makeDayFallback();
             return {
               date: dateStr,
-              sleep: item?.sleep ?? f.sleep,
-              calories: item?.calories ?? f.calories,
-              mood: item?.mood ?? f.mood,
+              // ✅ Use real data if present, otherwise unique random per day
+              sleep: (item?.sleep != null) ? item.sleep : f.sleep,
+              calories: (item?.calories != null) ? item.calories : f.calories,
+              mood: (item?.mood != null) ? item.mood : f.mood,
             };
           }
+
           return {
             date: dateStr,
             sleep: item?.sleep ?? null,
@@ -135,26 +141,29 @@ function UserAnalytics() {
 
         setSafeData(processed);
 
-        // ✅ Always generate insights — from server or locally from the processed data
-        const effectiveInsights =
-          serverInsights.length > 0 && serverInsights[0] !== "Not enough data"
+        // ✅ Always generate insights locally — never show "Not enough data"
+        const usableServerInsights =
+          serverInsights.length > 0 &&
+          !serverInsights.includes("Not enough data") &&
+          !serverInsights.includes("Not enough valid data")
             ? serverInsights
-            : generateLocalInsights(processed, tab);
+            : null;
 
-        setInsights(effectiveInsights);
+        setInsights(usableServerInsights || generateLocalInsights(processed, tab));
       } catch (err) {
         console.error(err);
 
+        // ✅ On error: demo gets fallback, real user gets empty date range
+        const allDates = buildDateRange(parseInt(range));
+
         if (isDemoUser) {
-          const allDates = buildDateRange(parseInt(range));
           const fallback = allDates.map((dateStr) => {
-            const f = generateFallback();
+            const f = makeDayFallback();
             return { date: dateStr, ...f };
           });
           setSafeData(fallback);
           setInsights(generateLocalInsights(fallback, tab));
         } else {
-          const allDates = buildDateRange(parseInt(range));
           const empty = allDates.map((dateStr) => ({
             date: dateStr, sleep: null, calories: null, mood: null,
           }));
@@ -167,10 +176,16 @@ function UserAnalytics() {
     fetchData();
   }, [range, tab]);
 
-  // ✅ CSV filename: e.g. "sleep_7days_analytics.csv"
+  // ✅ CSV: e.g. "sleep_7days_analytics.csv"
   const handleDownloadCSV = () => {
-    const filename = `${tab}_${range}days_analytics.csv`;
-    exportToCSV(safeData, filename);
+    // ✅ Prefix date with apostrophe so Excel treats it as text, not a date (no ## display)
+    const csvData = safeData.map((row) => ({
+      Date: `'${row.date}`,
+      Sleep_hrs: row.sleep ?? "",
+      Calories: row.calories ?? "",
+      Mood: row.mood ?? "",
+    }));
+    exportToCSV(csvData, `${tab}_${range}days_analytics.csv`);
   };
 
   const lineColors = { sleep: "#3b82f6", calories: "#10b981", mood: "#f59e0b" };

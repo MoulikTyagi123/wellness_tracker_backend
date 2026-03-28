@@ -2,10 +2,7 @@ const dashboardService = require("../services/dashboardService");
 const SleepEntry = require("../models/SleepEntry");
 const NutritionEntry = require("../models/NutritionEntry");
 const MentalWellnessEntry = require("../models/mentalWellnessEntry");
-const {
-  calculateStreak,
-  calculateGenericStreak,
-} = require("../services/streakService");
+const streakService = require("../services/streakService");
 const { generateInsights } = require("../services/insightService");
 
 // ✅ GET DASHBOARD
@@ -13,20 +10,46 @@ const getDashboard = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // ✅ FIX: call via module reference — NOT destructured import
+    // ✅ Call via module reference — never destructured
     const data = await dashboardService.getTodayDashboard(userId);
 
-    const sleepEntries = await SleepEntry.find({ userId });
-    const sleepStreak = calculateStreak(sleepEntries);
+    // ✅ Defensive streak calls — if streakService functions don't exist, default to 0
+    let sleepStreak = 0;
+    let calorieStreak = 0;
+    let moodStreak = 0;
 
-    const nutritionEntries = await NutritionEntry.find({ userId });
-    const mentalEntries = await MentalWellnessEntry.find({ userId });
+    try {
+      const sleepEntries = await SleepEntry.find({ userId });
+      if (typeof streakService.calculateStreak === "function") {
+        sleepStreak = streakService.calculateStreak(sleepEntries);
+      }
+    } catch (e) {
+      console.warn("sleepStreak error:", e.message);
+    }
 
-    const calorieStreak = calculateGenericStreak(
-      nutritionEntries,
-      "actualCalories",
-    );
-    const moodStreak = calculateGenericStreak(mentalEntries, "mood");
+    try {
+      const nutritionEntries = await NutritionEntry.find({ userId });
+      if (typeof streakService.calculateGenericStreak === "function") {
+        calorieStreak = streakService.calculateGenericStreak(
+          nutritionEntries,
+          "actualCalories"
+        );
+      }
+    } catch (e) {
+      console.warn("calorieStreak error:", e.message);
+    }
+
+    try {
+      const mentalEntries = await MentalWellnessEntry.find({ userId });
+      if (typeof streakService.calculateGenericStreak === "function") {
+        moodStreak = streakService.calculateGenericStreak(
+          mentalEntries,
+          "mood"
+        );
+      }
+    } catch (e) {
+      console.warn("moodStreak error:", e.message);
+    }
 
     res.json({
       ...data,
@@ -35,6 +58,7 @@ const getDashboard = async (req, res) => {
       moodStreak,
     });
   } catch (error) {
+    console.error("getDashboard error:", error.message);
     res.status(500).json({ message: error.message });
   }
 };
@@ -87,7 +111,6 @@ const getMyAnalytics = async (req, res) => {
     const days = parseInt(range);
     const filled = [];
 
-    // ✅ Always build ALL days in range — null for missing days
     for (let i = 0; i < days; i++) {
       const d = new Date(startDate);
       d.setDate(startDate.getDate() + i);
@@ -98,18 +121,18 @@ const getMyAnalytics = async (req, res) => {
           sleep: null,
           calories: null,
           mood: null,
-        },
+        }
       );
     }
 
-    // ✅ Filter non-null for insights only
     const clean = filled.filter(
-      (d) => d[type] !== null && d[type] !== undefined,
+      (d) => d[type] !== null && d[type] !== undefined
     );
     const insights = generateInsights(clean, type);
 
     res.json({ data: filled, insights });
   } catch (err) {
+    console.error("getMyAnalytics error:", err.message);
     res.status(500).json({ message: err.message });
   }
 };
