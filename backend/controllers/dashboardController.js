@@ -13,7 +13,7 @@ const getDashboard = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // ✅ FIX: call as plain function, not destructured
+    // ✅ FIX: call via module reference — NOT destructured import
     const data = await dashboardService.getTodayDashboard(userId);
 
     const sleepEntries = await SleepEntry.find({ userId });
@@ -24,9 +24,8 @@ const getDashboard = async (req, res) => {
 
     const calorieStreak = calculateGenericStreak(
       nutritionEntries,
-      "actualCalories"
+      "actualCalories",
     );
-
     const moodStreak = calculateGenericStreak(mentalEntries, "mood");
 
     res.json({
@@ -50,17 +49,12 @@ const getMyAnalytics = async (req, res) => {
     today.setHours(23, 59, 59, 999);
 
     const startDate = new Date(today);
-
     if (range === "7") startDate.setDate(today.getDate() - 6);
     else if (range === "15") startDate.setDate(today.getDate() - 14);
     else startDate.setDate(today.getDate() - 29);
-
     startDate.setHours(0, 0, 0, 0);
 
-    const filter = {
-      userId,
-      date: { $gte: startDate, $lte: today },
-    };
+    const filter = { userId, date: { $gte: startDate, $lte: today } };
 
     const sleep = await SleepEntry.find(filter);
     const nutrition = await NutritionEntry.find(filter);
@@ -72,57 +66,49 @@ const getMyAnalytics = async (req, res) => {
     sleep.forEach((e) => {
       const date = formatDate(e.date);
       if (!result[date]) result[date] = { date };
-
       const hours =
         (new Date(e.actualWakeupTime) - new Date(e.actualSleepTime)) /
         (1000 * 60 * 60);
-
       result[date].sleep = Number(hours.toFixed(2));
     });
 
     nutrition.forEach((e) => {
       const date = formatDate(e.date);
       if (!result[date]) result[date] = { date };
-
       result[date].calories = e.actualCalories || null;
     });
 
     mental.forEach((e) => {
       const date = formatDate(e.date);
       if (!result[date]) result[date] = { date };
-
       result[date].mood = e.mood || null;
     });
 
     const days = parseInt(range);
-
     const filled = [];
 
+    // ✅ Always build ALL days in range — null for missing days
     for (let i = 0; i < days; i++) {
       const d = new Date(startDate);
       d.setDate(startDate.getDate() + i);
-
       const formatted = formatDate(d);
-      const existing = result[formatted];
-
       filled.push(
-        existing || {
+        result[formatted] || {
           date: formatted,
           sleep: null,
           calories: null,
           mood: null,
-        }
+        },
       );
     }
 
-    const clean = filled.filter((d) => d[type] !== null);
-
+    // ✅ Filter non-null for insights only
+    const clean = filled.filter(
+      (d) => d[type] !== null && d[type] !== undefined,
+    );
     const insights = generateInsights(clean, type);
 
-    res.json({
-      data: filled,
-      insights,
-    });
+    res.json({ data: filled, insights });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

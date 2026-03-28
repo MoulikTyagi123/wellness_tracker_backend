@@ -20,7 +20,8 @@ const DEMO_IDS = [
 function AdminDashboard() {
   const [data, setData] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [range, setRange] = useState("30"); // ✅ NEW: range state
+  const [, setUserMap] = useState({}); // id -> name
+  const [range, setRange] = useState("7");
 
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [appliedUsers, setAppliedUsers] = useState([]);
@@ -31,7 +32,17 @@ function AdminDashboard() {
     mood: Math.floor(2 + Math.random() * 3),
   });
 
-  // ✅ FIX: re-fetch when range changes
+  // ✅ Build full date range on frontend for the selected number of days
+  const buildFullDateRange = (numDays) => {
+    const dates = [];
+    for (let i = numDays - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split("T")[0]);
+    }
+    return dates;
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -49,32 +60,42 @@ function AdminDashboard() {
         ]);
 
         const raw = analyticsRes.data.data || [];
+        const serverUserMap = analyticsRes.data.userMap || {};
         const users = usersRes.data.users || [];
 
         setAllUsers(users);
+        setUserMap(serverUserMap);
 
-        // ✅ Ensure today is always present
-        const today = new Date().toISOString().split("T")[0];
-        if (!raw.some((r) => r.date?.startsWith(today))) {
-          raw.push({ date: today });
-        }
+        // ✅ Build a map of existing data keyed by date
+        const rawByDate = {};
+        raw.forEach((row) => {
+          rawByDate[row.date] = row;
+        });
 
-        const userIds = users.map((u) => u._id);
+        // ✅ Build ALL days for the range
+        const allDates = buildFullDateRange(parseInt(range));
 
-        const processed = raw.map((row) => {
-          const newRow = { date: row.date };
+        const processed = allDates.map((dateStr) => {
+          const row = rawByDate[dateStr] || { date: dateStr };
+          const newRow = { date: dateStr };
 
-          userIds.forEach((userId) => {
+          users.forEach((user) => {
+            const userId = user._id;
+            const name = user.name;
+            const isDemoUser = DEMO_IDS.includes(userId);
+
             ["sleep", "calories", "mood"].forEach((type) => {
-              const key = `${userId}_${type}`;
+              // ✅ Backend now uses name_type keys
+              const nameKey = `${name}_${type}`;
+              const val = row[nameKey];
 
-              if (row[key] !== undefined && row[key] !== null) {
-                newRow[key] = row[key];
-              } else if (DEMO_IDS.includes(userId)) {
-                // ✅ Demo users always get fallback
-                newRow[key] = generateFallback()[type];
+              if (val !== undefined && val !== null) {
+                newRow[nameKey] = val;
+              } else if (isDemoUser) {
+                // ✅ Demo users always get fallback for every day
+                newRow[nameKey] = generateFallback()[type];
               } else {
-                newRow[key] = null;
+                newRow[nameKey] = null;
               }
             });
           });
@@ -89,7 +110,7 @@ function AdminDashboard() {
     };
 
     fetchData();
-  }, [range]); // ✅ re-fetch on range change
+  }, [range]);
 
   const handleCheckbox = (userId) => {
     if (selectedUsers.includes(userId)) {
@@ -105,28 +126,28 @@ function AdminDashboard() {
 
   const applySelection = () => setAppliedUsers(selectedUsers);
 
+  // ✅ CSV with readable headers: replace userId with userName in column headers
   const downloadCSV = () => {
     if (appliedUsers.length === 0) {
       alert("Select users first");
       return;
     }
 
+    const appliedNames = appliedUsers.map(
+      (uid) => allUsers.find((u) => u._id === uid)?.name || uid
+    );
+
     const filtered = data.map((row) => {
-      const newRow = { date: row.date };
-
-      appliedUsers.forEach((user) => {
-        Object.keys(row).forEach((key) => {
-          if (key.startsWith(user)) {
-            newRow[key] = row[key];
-          }
-        });
+      const newRow = { Date: row.date };
+      appliedNames.forEach((name) => {
+        newRow[`${name} - Sleep (hrs)`] = row[`${name}_sleep`] ?? "";
+        newRow[`${name} - Calories`] = row[`${name}_calories`] ?? "";
+        newRow[`${name} - Mood`] = row[`${name}_mood`] ?? "";
       });
-
       return newRow;
     });
 
-    // ✅ FIX: proper filename with range
-    exportToCSV(filtered, `admin_users_${range}days_analytics.csv`);
+    exportToCSV(filtered, `admin_${range}days_analytics.csv`);
   };
 
   const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
@@ -136,29 +157,27 @@ function AdminDashboard() {
       <h2 className="text-lg font-semibold mb-4">{title}</h2>
 
       {appliedUsers.length === 0 ? (
-        <p className="text-gray-400 text-center">
-          Select users and click Apply
+        <p className="text-gray-400 text-center py-8">
+          Select users and click Apply to view chart
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
+            <XAxis dataKey="date" tick={{ fontSize: 11 }} />
             <YAxis />
             <Tooltip />
             <Legend />
-
-            {appliedUsers.map((user, index) => {
-              const name =
-                allUsers.find((u) => u._id === user)?.name || user;
-
+            {appliedUsers.map((userId, index) => {
+              const name = allUsers.find((u) => u._id === userId)?.name || userId;
               return (
                 <Line
-                  key={`${user}_${type}`}
-                  dataKey={`${user}_${type}`}
+                  key={`${userId}_${type}`}
+                  dataKey={`${name}_${type}`}
                   name={name}
                   stroke={colors[index % colors.length]}
                   connectNulls
+                  dot={{ r: 2 }}
                 />
               );
             })}
@@ -192,7 +211,7 @@ function AdminDashboard() {
       {/* CSV Button */}
       <button
         onClick={downloadCSV}
-        className="mb-6 bg-green-600 text-white px-4 py-2 rounded"
+        className="mb-6 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
       >
         Download CSV
       </button>
@@ -202,7 +221,10 @@ function AdminDashboard() {
         <h3 className="font-semibold mb-3">Select Users (max 10)</h3>
 
         {allUsers.map((user) => (
-          <label key={user._id} className="flex items-center gap-2 mb-2 cursor-pointer">
+          <label
+            key={user._id}
+            className="flex items-center gap-2 mb-2 cursor-pointer"
+          >
             <input
               type="checkbox"
               checked={selectedUsers.includes(user._id)}
@@ -210,14 +232,16 @@ function AdminDashboard() {
             />
             <span>{user.name}</span>
             {DEMO_IDS.includes(user._id) && (
-              <span className="text-xs text-blue-500 bg-blue-50 px-1 rounded">demo</span>
+              <span className="text-xs text-blue-500 bg-blue-50 px-1 rounded">
+                demo
+              </span>
             )}
           </label>
         ))}
 
         <button
           onClick={applySelection}
-          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded w-full"
+          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded w-full hover:bg-blue-700"
         >
           Apply
         </button>

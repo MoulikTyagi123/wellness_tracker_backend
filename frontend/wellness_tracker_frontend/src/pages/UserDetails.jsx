@@ -10,7 +10,6 @@ import {
   Tooltip,
   CartesianGrid,
   ResponsiveContainer,
-  Legend,
 } from "recharts";
 
 const DEMO_IDS = [
@@ -18,12 +17,61 @@ const DEMO_IDS = [
   "69c62372f84856e3a6d12878",
 ];
 
+// ✅ Client-side insight generator
+const generateLocalInsights = (data, type) => {
+  const values = data
+    .map((d) => d[type])
+    .filter((v) => v !== null && v !== undefined && typeof v === "number" && !isNaN(v));
+
+  if (values.length === 0) return ["No data yet for this metric."];
+
+  if (values.length === 1) {
+    const val = values[0];
+    if (type === "sleep")
+      return [val >= 7 ? `Good: ${val.toFixed(1)} hrs sleep 😴` : `Only ${val.toFixed(1)} hrs — aim for 7+ ⚠️`];
+    if (type === "calories")
+      return [val > 2500 ? `High calorie day: ${val} kcal 🍔` : val < 1800 ? `Low calorie day: ${val} kcal ⚠️` : `Balanced: ${val} kcal ✅`];
+    if (type === "mood")
+      return [val >= 4 ? `Great mood: ${val}/5 😄` : val >= 3 ? `Stable: ${val}/5 🙂` : `Low mood: ${val}/5 ⚠️`];
+  }
+
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const first = values[0];
+  const last = values[values.length - 1];
+  const insights = [];
+
+  let trend = "stable";
+  if (last > first + 0.5) trend = "improving";
+  else if (last < first - 0.5) trend = "declining";
+
+  const label = type.charAt(0).toUpperCase() + type.slice(1);
+  if (trend === "improving") insights.push(`${label} is improving 📈`);
+  else if (trend === "declining") insights.push(`${label} is declining 📉`);
+  else insights.push(`${label} is stable`);
+
+  if (type === "sleep") {
+    if (avg >= 7) insights.push(`Good avg: ${avg.toFixed(1)} hrs 😴`);
+    else insights.push(`Low avg: ${avg.toFixed(1)} hrs — aim for 7+ ⚠️`);
+  }
+  if (type === "calories") {
+    if (avg > 2500) insights.push(`High avg: ${Math.round(avg)} kcal/day 🍔`);
+    else if (avg < 1800) insights.push(`Low avg: ${Math.round(avg)} kcal/day ⚠️`);
+    else insights.push(`Balanced avg: ${Math.round(avg)} kcal/day ✅`);
+  }
+  if (type === "mood") {
+    if (avg >= 4) insights.push(`Great avg mood: ${avg.toFixed(1)}/5 😄`);
+    else if (avg >= 3) insights.push(`Stable avg mood: ${avg.toFixed(1)}/5 🙂`);
+    else insights.push(`Low avg mood: ${avg.toFixed(1)}/5 ⚠️`);
+  }
+
+  return insights;
+};
+
 const UserDetails = () => {
   const { id } = useParams();
 
   const [user, setUser] = useState(null);
   const [analytics, setAnalytics] = useState([]);
-  const [insights, setInsights] = useState([]);
   const [range, setRange] = useState(7);
 
   const isDemoUser = DEMO_IDS.includes(id);
@@ -34,19 +82,15 @@ const UserDetails = () => {
     mood: Math.floor(2 + Math.random() * 3),
   });
 
-  // ✅ Build full fallback array for demo user (all days filled)
-  const buildDemoFallback = (numDays) => {
-    const fallbackData = [];
+  // ✅ Build full date series
+  const buildDateRange = (numDays) => {
+    const dates = [];
     for (let i = numDays - 1; i >= 0; i--) {
-      const f = generateFallback();
       const d = new Date();
       d.setDate(d.getDate() - i);
-      fallbackData.push({
-        date: d.toISOString().split("T")[0],
-        ...f,
-      });
+      dates.push(d.toISOString().split("T")[0]);
     }
-    return fallbackData;
+    return dates;
   };
 
   useEffect(() => {
@@ -54,74 +98,61 @@ const UserDetails = () => {
       try {
         const token = localStorage.getItem("token");
 
-        const userRes = await axios.get(
-          `https://wellness-tracker-backend-4if1.onrender.com/api/admin/users/${id}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-
-        const analyticsRes = await axios.get(
-          `https://wellness-tracker-backend-4if1.onrender.com/api/admin/users/${id}/analytics?range=${range}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        const [userRes, analyticsRes] = await Promise.all([
+          axios.get(
+            `https://wellness-tracker-backend-4if1.onrender.com/api/admin/users/${id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          ),
+          axios.get(
+            `https://wellness-tracker-backend-4if1.onrender.com/api/admin/users/${id}/analytics?range=${range}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          ),
+        ]);
 
         const rawData = analyticsRes.data.data || [];
 
-        let processed;
+        // ✅ Build date map from server response
+        const byDate = {};
+        rawData.forEach((item) => { byDate[item.date] = item; });
 
-        if (isDemoUser) {
-          // ✅ FIX: for demo users, build a complete date series with fallback for missing days
-          const dateMap = {};
-          rawData.forEach((item) => {
-            dateMap[item.date] = item;
-          });
-
-          processed = [];
-          for (let i = range - 1; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const dateStr = d.toISOString().split("T")[0];
-            const existing = dateMap[dateStr];
+        // ✅ Fill ALL days in range
+        const allDates = buildDateRange(range);
+        const processed = allDates.map((dateStr) => {
+          const item = byDate[dateStr];
+          if (isDemoUser) {
             const f = generateFallback();
-
-            processed.push({
+            return {
               date: dateStr,
-              sleep: existing?.sleep ?? f.sleep,
-              calories: existing?.calories ?? f.calories,
-              mood: existing?.mood ?? f.mood,
-            });
+              sleep: item?.sleep ?? f.sleep,
+              calories: item?.calories ?? f.calories,
+              mood: item?.mood ?? f.mood,
+            };
           }
-        } else {
-          processed = rawData.map((item) => ({
-            date: item.date,
-            sleep: item.sleep ?? null,
-            calories: item.calories ?? null,
-            mood: item.mood ?? null,
-          }));
-        }
+          return {
+            date: dateStr,
+            sleep: item?.sleep ?? null,
+            calories: item?.calories ?? null,
+            mood: item?.mood ?? null,
+          };
+        });
 
         setUser(userRes.data);
         setAnalytics(processed);
-
-        // ✅ FIX: always set some insights
-        const hasData = processed.some(
-          (d) => d.sleep !== null || d.calories !== null || d.mood !== null
-        );
-        setInsights(
-          hasData
-            ? ["Data loaded — select a metric to view trends."]
-            : ["No entries yet for this user."]
-        );
       } catch (err) {
         console.error(err);
 
         if (isDemoUser) {
-          // ✅ FIX: even on error, show fallback for demo users
-          const fallbackData = buildDemoFallback(range);
-          setAnalytics(fallbackData);
-          setInsights(["Demo data — showing sample analytics."]);
+          const allDates = buildDateRange(range);
+          const fallback = allDates.map((dateStr) => {
+            const f = generateFallback();
+            return { date: dateStr, ...f };
+          });
+          setAnalytics(fallback);
         } else {
-          setAnalytics([]);
-          setInsights(["No data available for this range."]);
+          const allDates = buildDateRange(range);
+          setAnalytics(allDates.map((dateStr) => ({
+            date: dateStr, sleep: null, calories: null, mood: null,
+          })));
         }
       }
     };
@@ -129,22 +160,59 @@ const UserDetails = () => {
     fetchAll();
   }, [id, range]);
 
-  // ✅ FIX: proper CSV filename
+  // ✅ CSV with proper filename
   const handleDownloadCSV = () => {
     const username = user?.name?.replace(/\s+/g, "_") || "user";
-    const filename = `${username}_${range}days_analytics.csv`;
-    exportToCSV(analytics, filename);
+    exportToCSV(analytics, `${username}_${range}days_analytics.csv`);
   };
 
-  if (!user && analytics.length === 0) return <h2 className="p-6">Loading...</h2>;
+  // ✅ Render one chart per metric
+  const renderMetricChart = (type, label, color) => {
+    const insights = generateLocalInsights(analytics, type);
+
+    return (
+      <div key={type} className="bg-white rounded-xl shadow p-4 mb-6">
+        <h3 className="font-semibold text-gray-800 mb-1">{label}</h3>
+
+        {/* ✅ Insights for this metric */}
+        <div className="mb-3 bg-blue-50 rounded-lg p-3">
+          <p className="text-xs font-semibold text-blue-700 mb-1">📊 Insights</p>
+          {insights.map((ins, idx) => (
+            <p key={idx} className="text-xs text-blue-700">• {ins}</p>
+          ))}
+        </div>
+
+        {/* Chart */}
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={analytics}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+            <YAxis />
+            <Tooltip />
+            <Line
+              dataKey={type}
+              stroke={color}
+              name={label}
+              connectNulls
+              dot={{ r: 3 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  };
+
+  if (!user && analytics.length === 0) {
+    return <h2 className="p-6">Loading...</h2>;
+  }
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">
-        {user?.name || "User"} Analytics
+      <h1 className="text-2xl font-bold mb-2">
+        {user?.name || "User"} — Analytics
         {isDemoUser && (
           <span className="ml-2 text-sm text-blue-500 bg-blue-50 px-2 py-1 rounded font-normal">
-            Demo User
+            Demo
           </span>
         )}
       </h1>
@@ -166,67 +234,18 @@ const UserDetails = () => {
         ))}
       </div>
 
-      {/* ✅ INSIGHTS — always rendered on UI */}
-      <div className="bg-white p-4 rounded-xl shadow mb-6">
-        <h3 className="font-semibold mb-2">📊 Insights</h3>
-        {insights.length === 0 ? (
-          <p className="text-gray-400 text-sm">Loading insights...</p>
-        ) : (
-          insights.map((insight, idx) => (
-            <p key={idx} className="text-sm text-gray-700">
-              • {insight}
-            </p>
-          ))
-        )}
-      </div>
-
       {/* CSV Button */}
       <button
         onClick={handleDownloadCSV}
-        className="mb-6 bg-green-600 text-white px-4 py-2 rounded"
+        className="mb-6 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
       >
         Download CSV
       </button>
 
-      {/* Chart */}
-      <div className="bg-white rounded-xl shadow p-4">
-        {analytics.length === 0 ? (
-          <p className="text-center text-gray-400 py-8">
-            No data to display. User has not logged any entries yet.
-          </p>
-        ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={analytics}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line
-                dataKey="sleep"
-                stroke="#3b82f6"
-                name="Sleep (hrs)"
-                connectNulls
-                dot={{ r: 3 }}
-              />
-              <Line
-                dataKey="calories"
-                stroke="#10b981"
-                name="Calories"
-                connectNulls
-                dot={{ r: 3 }}
-              />
-              <Line
-                dataKey="mood"
-                stroke="#f59e0b"
-                name="Mood"
-                connectNulls
-                dot={{ r: 3 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+      {/* ✅ THREE SEPARATE CHARTS, each with their own insights */}
+      {renderMetricChart("sleep", "Sleep (hrs)", "#3b82f6")}
+      {renderMetricChart("calories", "Calories", "#10b981")}
+      {renderMetricChart("mood", "Mood (1–5)", "#f59e0b")}
     </div>
   );
 };
