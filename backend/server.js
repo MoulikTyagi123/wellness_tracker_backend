@@ -20,7 +20,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const passport = require("./config/passport");
 
 const app = express();
-
+app.set("trust proxy", 1);
 // CORS
 const allowedOrigins = [
   "http://localhost:5173",
